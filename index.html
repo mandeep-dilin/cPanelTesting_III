@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Node DB Test</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, Arial, sans-serif; background: #0f172a; color: #e2e8f0; padding: 30px 16px; }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  .card { background: #1e293b; border-radius: 14px; padding: 22px; margin-bottom: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+  .top { display: flex; justify-content: space-between; align-items: center; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 14px; color: #94a3b8; font-weight: 600; }
+  .badge { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: #475569; }
+  .ok { background: #22c55e; color: #052e16; }
+  .bad { background: #ef4444; color: #fff; }
+  .meta { font-size: 13px; color: #94a3b8; margin-top: 10px; }
+  .err { color: #fca5a5; font-size: 13px; margin-top: 8px; word-break: break-word; }
+  input, textarea { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #e2e8f0; font: inherit; margin-bottom: 10px; }
+  textarea { resize: vertical; min-height: 70px; }
+  button { background: #38bdf8; color: #082f49; border: 0; padding: 10px 18px; border-radius: 8px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: default; }
+  .entry { border-top: 1px solid #334155; padding: 12px 0; }
+  .entry:first-child { border-top: 0; padding-top: 0; }
+  .entry b { color: #38bdf8; }
+  .entry small { color: #64748b; margin-left: 6px; }
+  .entry p { margin: 4px 0 0; white-space: pre-wrap; word-break: break-word; }
+  .empty { color: #64748b; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="top">
+      <h1>Node DB Test</h1>
+      <span class="badge" id="db">DB: …</span>
+    </div>
+    <div class="meta" id="meta">Loading…</div>
+    <div class="err" id="dberr"></div>
+  </div>
+
+  <div class="card">
+    <h2>Add entry</h2>
+    <form id="form">
+      <input id="name" placeholder="Name" maxlength="100" required>
+      <textarea id="message" placeholder="Message" maxlength="500" required></textarea>
+      <button id="btn" type="submit">Save</button>
+      <span class="err" id="formerr"></span>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Saved entries <span id="count"></span></h2>
+    <div id="list"><div class="empty">Loading…</div></div>
+  </div>
+</div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  async function loadHealth() {
+    try {
+      const d = await (await fetch('health', { cache: 'no-store' })).json();
+      $('db').textContent = 'DB: ' + d.db;
+      $('db').className = 'badge ' + (d.db === 'connected' ? 'ok' : 'bad');
+      $('meta').textContent = d.version + ' · Node ' + d.node + ' · started ' + new Date(d.started).toLocaleString();
+      $('dberr').textContent = d.dbError || '';
+    } catch (e) {
+      $('db').textContent = 'APP DOWN';
+      $('db').className = 'badge bad';
+    }
+  }
+
+  async function loadEntries() {
+    try {
+      const r = await fetch('api/entries', { cache: 'no-store' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      $('count').textContent = '(' + d.length + ')';
+      $('list').innerHTML = d.length
+        ? d.map((e) => '<div class="entry"><b>' + esc(e.name) + '</b><small>#' + e.id + ' · ' + new Date(e.created_at).toLocaleString() + '</small><p>' + esc(e.message) + '</p></div>').join('')
+        : '<div class="empty">No entries yet. Add one above.</div>';
+    } catch (e) {
+      $('list').innerHTML = '<div class="err">' + esc(e.message) + '</div>';
+    }
+  }
+
+  $('form').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    $('btn').disabled = true;
+    $('formerr').textContent = '';
+    try {
+      const r = await fetch('api/entries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: $('name').value, message: $('message').value }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error);
+      $('message').value = '';
+      await loadEntries();
+    } catch (e) {
+      $('formerr').textContent = ' ' + e.message;
+    }
+    $('btn').disabled = false;
+  });
+
+  loadHealth();
+  loadEntries();
+</script>
+</body>
+</html>
